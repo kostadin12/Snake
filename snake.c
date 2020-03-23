@@ -1,11 +1,11 @@
 #include <Snake.h>
-#include "FastLED.h"
+#include <FastLED.h>
 
 #define NUM_LEDS 144
 #define LEDS_PER_ROW 12
 #define DATA_PIN 6
 
-Snake snakeGame(12,12,10);      //размер на полето        
+Snake snakeGame(12,12,10);      //размер на полето 12*12 delay=10        
 CRGB leds[NUM_LEDS];
 
 void setup() {
