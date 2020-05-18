@@ -1,139 +1,193 @@
-#include <Snake.h>
-#include <FastLED.h>
-#include<gtest/gtest.h>
+#include <iostream>
+#include <conio.h>
+#include "windows.h"
 
-#define NUM_LEDS 49
-#define LEDS_PER_ROW 7
-#define DATA_PIN 6
+//-2 - има храна
+//-1 - стена
+//0 - няма нищо
+//1 - змия
 
-Snake snakeGame(7,7,10);      //размер на полето 7*7 delay=10        
-CRGB leds[NUM_LEDS];
+void run();
+void printMap();
+void initMap();
+void move(int dx, int dy);
+void update();
+void changeDirection(char key);
+void clearScreen();
+void generateFood();
+char getMapValue(int value);
 
-void setup() {
-    snakeGame.setBodyColor(255,0,255);
-    snakeGame.setFoodColor(0,60,125);
-    snakeGame.setHeadColor(225,20,60);
+const int mapwidth = 12;
+const int mapheight = 12;
+const int size = mapwidth * mapheight;
+int map[size];
 
-    delay(2000);
-    FastLED.addLeds<WS2811, DATA_PIN, GRB>(leds, NUM_LEDS);
-    Serial.begin(9600); //Задава скорост на предаване на данни
-}
+int headXposition;
+int headYposition;
+int direction;
 
-byte setPixel(byte x, byte y, byte r, byte g, byte b)// намираме конкретния светодиод който ни трябва
+// дължина на змията и брой точки 
+int food = 3;
+
+// false = end game
+bool running;
+
+int main()
 {
-    byte ledID = NUM_LEDS - (y * LEDS_PER_ROW  ) - x - 1;
- 
-    leds[ledID].setRGB(r,g,b);
-    return ledID;
-}
-TEST_F(SetPixelTest, setPixel){
- setPixel(4, 4, 1, 2, 3);
- EXPECT_EQ(leds.setRGB(1, 2, 3),leds[16]);
+    run();
+    return 0;
 }
 
-void changeRGBtoGBR()
+
+void run()
 {
-    for(int whiteLed = 0; whiteLed < NUM_LEDS; whiteLed++)
-    {
-      leds[whiteLed].setRGB(leds[whiteLed].g , leds[whiteLed].b, leds[whiteLed].r);
-    }
-}
-TEST_F(ChangeRGBtoGBRTest, changeRGBtoGBR){
- changeRGBtoGBR();
- EXPECT_EQ(leds.setRGB(1, 2, 3),leds.setRGB(2, 3, 1));
-}
-
-void clearScreen()
-{
-    for(int whiteLed = 0; whiteLed < NUM_LEDS; whiteLed++)
-    {
-      leds[whiteLed].setRGB( 3, 3, 3);
-    }
-}
-TEST_F(ClearScreanTest, clearScrean){
- clearScrean();
- EXPECT_EQ(leds[whiteLed].setRGB( 3, 3, 3), leds);
-}
-
-void loop()
-{     
-    Snake::pixel* snakeLimbs=snakeGame.getSnakeLimbs();
-    Snake::pixel* snakeFood = snakeGame.getFoodPositions();
-    clearScreen();
-    setPixel(snakeFood[0].posX,6-snakeFood[0].posY,snakeFood[0].pixelColor.r,snakeFood[0].pixelColor.g,snakeFood[0].pixelColor.b); // показване на храна
-    for(int i=0; i<snakeGame.getSnakeLenght(); i++)
-    {
-   
-        setPixel(snakeLimbs[i].posX,6-snakeLimbs[i].posY,snakeLimbs[i].pixelColor.r,snakeLimbs[i].pixelColor.g,snakeLimbs[i].pixelColor.b);  // дисплей с размер на лентата
-    }
-    FastLED.show();
-    snakeGame.tick();
-    if(snakeGame.wasGameReset())
-    {
-        for(int i=0; i<30; i++)
-        {
-            changeRGBtoGBR();
-            FastLED.show();
-            delay(40);
+    initMap();
+    running = true;
+    while (running) {
+        // kbhit дали натиснат клавиш
+        if (_kbhit()) {
+            // взима това което сме натиснали
+            changeDirection(_getch());
         }
+        //map
+        update();
+
+        clearScreen();
+
+        printMap();
+
+        // изчакване 0.5 секунди
+        Sleep(500);
     }
-    else
-        delay(30);
+
+    std::cout << "\t\tGame over!" << std::endl << "\t\tYour score is: " << (food - 3);
+
+    // Непозволява на конзолата да се затваря веднага 
+    std::cin.ignore();
 }
 
-byte incomingByte=0;
-void serialEvent() {
-    while (Serial.available())
-    {
-        incomingByte = Serial.read();
-        Serial.write(incomingByte);
-    }
-    switch(incomingByte)
-    {
-    case 37:
-        snakeGame.goLeft();
+
+void changeDirection(char key) {
+    switch (key) {
+    case 'w':
+        if (direction != 2) direction = 0;
         break;
-    case 39:
-        snakeGame.goRight();
+    case 'd':
+        if (direction != 3) direction = 1;
         break;
-    case 40:
-        snakeGame.goDown();
+    case 's':
+        if (direction != 0) direction = 2;
         break;
-    case 38:
-        snakeGame.goUp(); 
+    case 'a':
+        if (direction != 1) direction = 3;
         break;
     }
 }
-TEST_F(ChangingLeftDirectionTest, serialEvent){
- incomingByte = 37;
- if(leds[12].setRGB(225,20,60)){
- EXPECT_EQ(leds[11], leds.setRGB(225,20,60));
- }
+
+// Moves snake head to new location
+void move(int dx, int dy) {// tezi 2 promenlivi mogat da sa 0, 1, -1 zavisi na kude iskame da premestim glavata 
+
+    int newX = headXposition + dx;
+    int newY = headYposition + dy;
+
+    // Check if there is food at location
+    if (map[newX + newY * mapwidth] == -2) { 
+        food++;
+
+        generateFood();
+    }
+
+    else if (map[newX + newY * mapwidth] != 0) {
+        running = false;
+    }
+
+    headXposition = newX;
+    headYposition = newY;
+    map[headXposition + headYposition * mapwidth] = food + 1;
+
 }
 
-TEST_F(ChangingRightDirectionTest, serialEvent){
- incomingByte = 39;
- if(leds[12].setRGB(225,20,60)){
- EXPECT_EQ(leds[13], leds.setRGB(225,20,60));
- }
+void clearScreen() {
+    system("cls");
 }
 
-TEST_F(ChangingUpDirectionTest, serialEvent){
- incomingByte = 38;
- if(leds[12].setRGB(225,20,60)){
- EXPECT_EQ(leds[5], leds.setRGB(225,20,60));
- }
+void generateFood() {
+    int x = 0;
+    int y = 0;
+    do {
+        // Generate random x and y values within the map
+        x = rand() % (mapwidth - 2) + 1;//v1 = rand() % 100;     // v1 in the range 0 to 99           v2 = rand() % 100 + 1;     // v2 in the range 1 to 100
+        y = rand() % (mapheight - 2) + 1;
+
+        // If location is not free try again
+    } while (map[x + y * mapwidth] != 0);
+
+    // Place new food
+    map[x + y * mapwidth] = -2;
 }
 
-TEST_F(ChangingDownDirectionTest, serialEvent){
- incomingByte = 40;
- if(leds[12].setRGB(225,20,60)){
- EXPECT_EQ(leds[19], leds.setRGB(225,20,60));
- }
+// Updates the map
+void update() {
+    // Move in direction indicated
+    switch (direction) {
+    case 0: move(-1, 0);
+        break;
+    case 1: move(0, 1);
+        break;
+    case 2: move(1, 0);
+        break;
+    case 3: move(0, -1);
+        break;
+    }
+    // изтриваме змията
+    for (int i = 0; i < size; i++) {
+        if (map[i] > 0) map[i]--;
+    }
 }
 
-int main(int argc, char* argv[]){
+void initMap()
+{
+    // поставяме змията първоначално в средата
+    headXposition = mapwidth / 2;
+    headYposition = mapheight / 2;
+    map[headXposition + headYposition * mapwidth] = 1;
 
- testing::InitGoogleTest(&argc, argv);
- return RUN_ALL_TESTS();
+    //слагаме долната и горната стена
+    for (int x = 0; x < mapwidth; ++x) {
+        map[x] = -1;
+        map[x + (mapheight - 1) * mapwidth] = -1;
+    }
+
+    // слагаме страничните стени
+    for (int y = 0; y < mapheight; y++) {
+        map[0 + y * mapwidth] = -1;
+        map[(mapwidth - 1) + y * mapwidth] = -1;
+    }
+
+    // слагаме първата храна
+    generateFood();
+}
+
+void printMap()
+{
+    for (int x = 0; x < mapwidth; ++x) {
+        for (int y = 0; y < mapheight; ++y) {
+            // Prints the value at current x,y location
+            std::cout << getMapValue(map[x + y * mapwidth]);
+        }
+        // Ends the line for next x value
+        std::cout << std::endl;
+    }
+}
+
+char getMapValue(int value)
+{
+    if (value > 0) return 'o';
+
+    switch (value) {
+        // Return wall
+    case -1: return 'X';
+        // Return food
+    case -2: return 'O';
+    }
 }
